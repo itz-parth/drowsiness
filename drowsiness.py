@@ -7,7 +7,7 @@ from imutils import face_utils
 from scipy.spatial import distance as dist
 
 # Config
-EYE_AR_THRESH = 0.25
+EYE_AR_THRESH = 0.15
 EYE_AR_CONSEC_FRAMES = 15
 MAR_AR_THRESH = 0.5
 YAWN_CONSEC_FRAMES = 20
@@ -15,6 +15,10 @@ YAWN_CONSEC_FRAMES = 20
 eye_counter = 0
 yawn_counter = 0
 yawn_history = []
+
+NOD_THRESH = 0.45
+NOD_FRAMES = 20 
+nod_counter = 0
 
 PREDICTOR_PATH = "shape_predictor_68_face_landmarks.dat"
 
@@ -36,6 +40,15 @@ def mouth_aspect_ratio(mouth):
     mar = (A + B + C) / (2.0 * D)
     return mar
 
+# Nod Ratio Function
+def nod_ratio(shape, rect):
+    nose_y = shape[30][1]
+    chin_y = shape[8][1]
+    
+    vertical_distance = abs(nose_y - chin_y)
+    (x, y, w, h) = face_utils.rect_to_bb(rect)
+    
+    return vertical_distance / float(w)
 
 if not os.path.exists(PREDICTOR_PATH):
     print("Path not found!")
@@ -85,6 +98,9 @@ while True:
             mouth = shape[mStart:mEnd]
             mar = mouth_aspect_ratio(mouth)
 
+            # Nod detection
+            n_ratio = nod_ratio(shape, rect)
+
             # For visual purpose
             cv2.drawContours(frame, [cv2.convexHull(leftEye)], -1, (0, 255, 0), 1)
             cv2.drawContours(frame, [cv2.convexHull(rightEye)], -1, (0, 255, 0), 1)
@@ -93,11 +109,12 @@ while True:
             # Eye detection
             if ear < EYE_AR_THRESH:
                 eye_counter += 1
-                if eye_counter >= EYE_AR_CONSEC_FRAMES:
-                    cv2.putText(frame, "DROWSINESS ALERT!", (10, 30),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             else:
                 eye_counter = 0
+            
+            if eye_counter >= EYE_AR_CONSEC_FRAMES:
+                    cv2.putText(frame, "DROWSINESS ALERT!", (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
             # Yawn detection
             if mar > MAR_AR_THRESH:
@@ -113,8 +130,18 @@ while True:
             if len(yawn_history) >= 3:
                 cv2.putText(frame, "FREQUNET YAWN ALERT!", (10, 60),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                
+            # Nod detection
+            if n_ratio < NOD_THRESH and ear < 0.25:
+                eye_counter += 2
+                nod_counter += 1
+                if nod_counter >= NOD_FRAMES:
+                    cv2.putText(frame, "NOD ALERT!", (10, 90),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            else:
+                nod_counter = 0
 
-            cv2.putText(frame, f"EAR: {ear:.2f} | MAR: {mar:.2f} | YAWN_COUNTER: {yawn_counter} | YAWN_HISTORY: {len(yawn_history)}", (30, 30),
+            cv2.putText(frame, f"EAR: {ear:.2f} | MAR: {mar:.2f} | YAWN_COUNTER: {yawn_counter} | YAWN_HISTORY: {len(yawn_history)} | nod: {n_ratio}", (30, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
     except Exception as e:
